@@ -1,11 +1,13 @@
 from fastapi import FastAPI, Request
 import requests
+import os
 
 app = FastAPI()
 
-TELEGRAM_BOT_TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
-TELEGRAM_CHANNEL_ID = "@your_telegram_channel" 
-WHATSAPP_CHANNEL_JID = "120363407824522561@newsletter" # You will grab this from your logs
+# Fetching variables from Easypanel's Environment tab
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHANNEL_ID = os.getenv("TELEGRAM_CHANNEL_ID")
+WHATSAPP_CHANNEL_JID = os.getenv("WHATSAPP_CHANNEL_JID")
 
 @app.post("/webhook")
 async def receive_webhook(request: Request):
