@@ -15,7 +15,7 @@ def read_root():
     return {"status": "Bridge is active and listening!"}
 
 # 2. This handles the Evolution API Webhook (POST /webhook/messages-upsert)
-@app.post("/webhook/messages-upsert")
+@app.post("/webhook")
 async def receive_webhook(request: Request):
     payload = await request.json()
     
