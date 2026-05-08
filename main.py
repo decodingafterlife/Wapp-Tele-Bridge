@@ -9,14 +9,20 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHANNEL_ID = os.getenv("TELEGRAM_CHANNEL_ID")
 WHATSAPP_CHANNEL_JID = os.getenv("WHATSAPP_CHANNEL_JID")
 
-@app.post("/webhook")
+# 1. This handles the browser visit (GET /)
+@app.get("/")
+def read_root():
+    return {"status": "Bridge is active and listening!"}
+
+# 2. This handles the Evolution API Webhook (POST /webhook/messages-upsert)
+@app.post("/webhook/messages-upsert")
 async def receive_webhook(request: Request):
     payload = await request.json()
     
-    # 1. Print the payload to your console first to see the exact structure
+    # Print the payload to your console first to see the exact structure
     print(payload) 
 
-    # 2. Filter for new messages only
+    # Filter for new messages only (Evolution might send 'messages.upsert' in the body)
     if payload.get("event") != "messages.upsert":
         return {"status": "ignored"}
 
@@ -26,10 +32,10 @@ async def receive_webhook(request: Request):
     
     remote_jid = key.get("remoteJid", "")
 
-    # 3. Check if the message is from your target WhatsApp Channel
+    # Check if the message is from your target WhatsApp Channel
     if remote_jid == WHATSAPP_CHANNEL_JID:
         
-        # Extract the text (the JSON path varies slightly between standard text and media captions)
+        # Extract the text
         text = message.get("conversation") or message.get("extendedTextMessage", {}).get("text")
         
         if text:
