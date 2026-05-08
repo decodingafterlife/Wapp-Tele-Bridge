@@ -16,13 +16,9 @@ def read_root():
 
 # 2. This handles the Evolution API Webhook (POST /webhook/messages-upsert)
 @app.post("/webhook")
-async def receive_webhook(request: Request):
+async def receive_webhook(request: Request, event_name: str = None):
     payload = await request.json()
     
-    # Print the payload to your console first to see the exact structure
-    print(payload) 
-
-    # Filter for new messages only (Evolution might send 'messages.upsert' in the body)
     if payload.get("event") != "messages.upsert":
         return {"status": "ignored"}
 
@@ -31,15 +27,16 @@ async def receive_webhook(request: Request):
     message = data.get("message", {})
     
     remote_jid = key.get("remoteJid", "")
+    from_me = key.get("fromMe", False)
 
-    # Check if the message is from your target WhatsApp Channel
-    if remote_jid == WHATSAPP_CHANNEL_JID:
-        
-        # Extract the text
-        text = message.get("conversation") or message.get("extendedTextMessage", {}).get("text")
-        
-        if text:
-            send_to_telegram(text)
+    # 1. Print EVERY single JID that hits the server
+    print(f"\n--- NEW MESSAGE DETECTED ---")
+    print(f"From JID: {remote_jid}")
+    print(f"From Me: {from_me}")
+    
+    text = message.get("conversation") or message.get("extendedTextMessage", {}).get("text")
+    print(f"Text: {text}")
+    print(f"----------------------------\n")
 
     return {"status": "success"}
 
