@@ -14,7 +14,7 @@ async def receive_webhook(request: Request):
     payload = await request.json()
     
     # 1. Print the payload to your console first to see the exact structure
-    # print(payload) 
+    print(payload) 
 
     # 2. Filter for new messages only
     if payload.get("event") != "messages.upsert":
