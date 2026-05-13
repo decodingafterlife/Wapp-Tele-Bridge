@@ -30,9 +30,11 @@ async def poll_whatsapp_channel():
                 "Authorization": f"Bearer {EVO_API_KEY}",
                 "Content-Type": "application/json"
             }
+            # Increased count to 20 to ensure we don't miss channel messages in a busy global feed
             payload = {
+                "remoteJid": WHATSAPP_CHANNEL_JID,
                 "where": {"remoteJid": WHATSAPP_CHANNEL_JID},
-                "count": 5
+                "count": 20 
             }
             
             response = requests.post(url, json=payload, headers=headers)
@@ -41,7 +43,6 @@ async def poll_whatsapp_channel():
                 data = response.json()
                 
                 messages = []
-                
                 if isinstance(data, list):
                     messages = data
                 elif isinstance(data, dict):
@@ -50,26 +51,34 @@ async def poll_whatsapp_channel():
                         messages = list(messages.values())
 
                 if not messages:
-                    print(f"No messages parsed. RAW DB Response: {str(data)[:300]}")
+                    pass # Quietly wait
                 else:
-                    latest_message = messages[-1]
+                    # --- STRICT PYTHON-SIDE FILTERING ---
+                    channel_msgs = []
+                    for m in messages:
+                        # Unwrap lists if necessary
+                        if isinstance(m, list) and len(m) > 0:
+                            m = m[-1]
+                        
+                        if isinstance(m, dict):
+                            # Check if this specific message is from our Channel
+                            jid = m.get("key", {}).get("remoteJid", "")
+                            if jid == WHATSAPP_CHANNEL_JID:
+                                channel_msgs.append(m)
                     
-                    # --- THE FIX: UNWRAPPER ---
-                    # If the database wrapped the message in an extra list, extract it
-                    if isinstance(latest_message, list):
-                        if len(latest_message) > 0:
-                            latest_message = latest_message[-1]
-                        else:
-                            latest_message = {}
-                            
-                    # Safety check: ensure it is now actually a dictionary
-                    if isinstance(latest_message, dict):
+                    if not channel_msgs:
+                        # Feed had messages, but none were from our target channel
+                        pass 
+                    else:
+                        # Grab the most recent message THAT BELONGS TO OUR CHANNEL
+                        latest_message = channel_msgs[-1]
                         message_id = latest_message.get("key", {}).get("id")
                         
                         if message_id and message_id != last_processed_message_id:
-                            print(f"New Message ID detected: {message_id}")
+                            print(f"New CHANNEL Message ID: {message_id}")
                             
-                            msg_content = latest_message.get("message", {})
+                            # The 'or {}' fixes the NoneType error on system messages
+                            msg_content = latest_message.get("message") or {}
                             
                             text = msg_content.get("conversation") or \
                                    msg_content.get("extendedTextMessage", {}).get("text") or \
@@ -82,9 +91,7 @@ async def poll_whatsapp_channel():
                                 send_to_telegram(text)
                                 last_processed_message_id = message_id
                             else:
-                                print(f"Received message, but no text found. RAW: {str(latest_message)[:200]}")
-                    else:
-                        print(f"Unexpected data type for message. RAW: {str(latest_message)[:200]}")
+                                print(f"Message received, but no text found (System Message/Sticker).")
             else:
                 print(f"API Request Failed ({response.status_code}): {response.text}")
 
