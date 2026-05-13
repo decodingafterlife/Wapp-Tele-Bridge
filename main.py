@@ -4,12 +4,13 @@ import os
 import asyncio
 from contextlib import asynccontextmanager
 
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-TELEGRAM_CHANNEL_ID = os.getenv("TELEGRAM_CHANNEL_ID")
-WHATSAPP_CHANNEL_JID = os.getenv("WHATSAPP_CHANNEL_JID")
-EVO_API_URL = os.getenv("EVO_API_URL")
-EVO_API_KEY = os.getenv("EVO_API_KEY")
-INSTANCE_NAME = os.getenv("INSTANCE_NAME", "Wapp")
+# .strip('"').strip("'").strip() automatically removes any accidental quotes or spaces!
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip('"').strip("'").strip()
+TELEGRAM_CHANNEL_ID = os.getenv("TELEGRAM_CHANNEL_ID", "").strip('"').strip("'").strip()
+WHATSAPP_CHANNEL_JID = os.getenv("WHATSAPP_CHANNEL_JID", "").strip('"').strip("'").strip()
+EVO_API_URL = os.getenv("EVO_API_URL", "").strip('"').strip("'").strip()
+EVO_API_KEY = os.getenv("EVO_API_KEY", "").strip('"').strip("'").strip()
+INSTANCE_NAME = os.getenv("INSTANCE_NAME", "Wapp").strip('"').strip("'").strip()
 
 last_processed_message_id = None
 
@@ -18,6 +19,8 @@ async def poll_whatsapp_channel():
     print("\n--- POLLING ENGINE STARTING ---")
     print(f"Target JID: {WHATSAPP_CHANNEL_JID}")
     print(f"Evolution URL: {EVO_API_URL}")
+    # Print the first 4 characters of the key to verify it loaded without quotes
+    print(f"API Key Starts With: {EVO_API_KEY[:4]}...") 
     print("-------------------------------\n")
     
     await asyncio.sleep(2)
@@ -25,22 +28,24 @@ async def poll_whatsapp_channel():
     while True:
         try:
             url = f"{EVO_API_URL}/chat/findMessages/{INSTANCE_NAME}"
-            headers = {"apikey": EVO_API_KEY, "Content-Type": "application/json"}
+            
+            # Sending the key in BOTH formats to guarantee V2 compatibility
+            headers = {
+                "apikey": EVO_API_KEY, 
+                "Authorization": f"Bearer {EVO_API_KEY}",
+                "Content-Type": "application/json"
+            }
+            
             payload = {
                 "where": {"remoteJid": WHATSAPP_CHANNEL_JID},
                 "count": 5
             }
             
-            # Print right before the API call to prove the loop is running
             print("Fetching messages from database...")
             response = requests.post(url, json=payload, headers=headers)
             
             if response.status_code == 200:
                 data = response.json()
-                
-                # UNCOMMENT THIS LINE if you want to see the massive raw JSON dump
-                # print(f"Raw API Data: {data}")
-
                 messages = data.get("messages", [])
                 
                 if not messages:
@@ -54,7 +59,6 @@ async def poll_whatsapp_channel():
                         
                         msg_content = latest_message.get("message", {})
                         
-                        # Handle standard texts, captions, and explicit newsletter text
                         text = msg_content.get("conversation") or \
                                msg_content.get("extendedTextMessage", {}).get("text") or \
                                msg_content.get("newsletterText") or \
@@ -90,7 +94,6 @@ def send_to_telegram(text):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # This ensures the polling loop starts the moment the server boots up
     task = asyncio.create_task(poll_whatsapp_channel())
     yield
     task.cancel()
