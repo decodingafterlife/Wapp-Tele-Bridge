@@ -21,50 +21,50 @@ def read_root():
 
 async def poll_whatsapp_channel():
     global last_processed_message_id
-    
-    # Give the server a few seconds to boot up before starting the loop
     await asyncio.sleep(5)
-    print("Started polling WhatsApp Channel...")
+    print(f"Polling started for JID: {WHATSAPP_CHANNEL_JID}")
 
     while True:
         try:
-            # Ask Evolution API for the messages from this specific JID
             url = f"{EVO_API_URL}/chat/findMessages/{INSTANCE_NAME}"
             headers = {"apikey": EVO_API_KEY, "Content-Type": "application/json"}
-            payload = {"where": {"remoteJid": WHATSAPP_CHANNEL_JID}}
+            # We add a 'count' to ensure we get the latest 5 messages
+            payload = {
+                "where": {"remoteJid": WHATSAPP_CHANNEL_JID},
+                "count": 5
+            }
             
             response = requests.post(url, json=payload, headers=headers)
             
             if response.status_code == 200:
                 data = response.json()
-                
-                # Check if we got messages back (Evolution returns a list of message objects)
-                if data and "messages" in data and len(data["messages"]) > 0:
-                    
-                    # Sort or get the most recent message (Evolution usually returns latest last)
-                    messages = data["messages"]
-                    latest_message = messages[-1] # Grabbing the last one in the array
-                    
+                # DEBUG: This will show us exactly what the API is seeing
+                # print(f"Raw API Data: {data}") 
+
+                messages = data.get("messages", [])
+                if messages:
+                    latest_message = messages[-1]
                     message_id = latest_message.get("key", {}).get("id")
                     
-                    # If this is a brand new message we haven't seen yet
-                    if message_id and message_id != last_processed_message_id:
-                        
-                        # Extract the text
+                    if message_id != last_processed_message_id:
                         msg_content = latest_message.get("message", {})
-                        text = msg_content.get("conversation") or msg_content.get("extendedTextMessage", {}).get("text")
+                        text = msg_content.get("conversation") or \
+                               msg_content.get("extendedTextMessage", {}).get("text") or \
+                               msg_content.get("newsletterText") # Some versions use this for channels
                         
                         if text:
-                            print(f"New Channel Message Found: {text}")
+                            print(f"Match Found! Sending to Telegram: {text[:20]}...")
                             send_to_telegram(text)
-                        
-                        # Update our tracker so we don't send it again
-                        last_processed_message_id = message_id
+                            last_processed_message_id = message_id
+                else:
+                    # If you see this in logs, it means the JID is wrong or the DB is empty
+                    print(f"No messages found in Evolution DB for JID: {WHATSAPP_CHANNEL_JID}")
+            else:
+                print(f"API Error {response.status_code}: {response.text}")
 
         except Exception as e:
             print(f"Polling error: {str(e)}")
             
-        # Wait 10 seconds before checking again (adjust this depending on how fast you want it)
         await asyncio.sleep(10)
 
 def send_to_telegram(text):
