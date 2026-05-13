@@ -40,50 +40,57 @@ async def poll_whatsapp_channel():
             if response.status_code == 200:
                 data = response.json()
                 
-                # --- NEW SAFEPARSE LOGIC ---
                 messages = []
                 
-                # 1. If Evolution returned a direct list
                 if isinstance(data, list):
                     messages = data
-                # 2. If Evolution returned a dictionary
                 elif isinstance(data, dict):
                     messages = data.get("messages") or data.get("data") or data.get("records") or []
-                    # If the messages themselves are inside a dict instead of a list
                     if isinstance(messages, dict):
                         messages = list(messages.values())
 
                 if not messages:
-                    # Print the first 300 characters of the raw response so we can see it
                     print(f"No messages parsed. RAW DB Response: {str(data)[:300]}")
                 else:
-                    # Safely grab the most recent message
                     latest_message = messages[-1]
-                    message_id = latest_message.get("key", {}).get("id")
                     
-                    if message_id and message_id != last_processed_message_id:
-                        print(f"New Message ID detected: {message_id}")
-                        
-                        msg_content = latest_message.get("message", {})
-                        
-                        text = msg_content.get("conversation") or \
-                               msg_content.get("extendedTextMessage", {}).get("text") or \
-                               msg_content.get("newsletterText") or \
-                               msg_content.get("imageMessage", {}).get("caption") or \
-                               msg_content.get("videoMessage", {}).get("caption")
-                        
-                        if text:
-                            print(f"Extracted Text: {text[:30]}...")
-                            send_to_telegram(text)
-                            last_processed_message_id = message_id
+                    # --- THE FIX: UNWRAPPER ---
+                    # If the database wrapped the message in an extra list, extract it
+                    if isinstance(latest_message, list):
+                        if len(latest_message) > 0:
+                            latest_message = latest_message[-1]
                         else:
-                            print(f"Received message, but no text found. RAW: {str(latest_message)[:200]}")
+                            latest_message = {}
+                            
+                    # Safety check: ensure it is now actually a dictionary
+                    if isinstance(latest_message, dict):
+                        message_id = latest_message.get("key", {}).get("id")
+                        
+                        if message_id and message_id != last_processed_message_id:
+                            print(f"New Message ID detected: {message_id}")
+                            
+                            msg_content = latest_message.get("message", {})
+                            
+                            text = msg_content.get("conversation") or \
+                                   msg_content.get("extendedTextMessage", {}).get("text") or \
+                                   msg_content.get("newsletterText") or \
+                                   msg_content.get("imageMessage", {}).get("caption") or \
+                                   msg_content.get("videoMessage", {}).get("caption")
+                            
+                            if text:
+                                print(f"Extracted Text: {text[:30]}...")
+                                send_to_telegram(text)
+                                last_processed_message_id = message_id
+                            else:
+                                print(f"Received message, but no text found. RAW: {str(latest_message)[:200]}")
+                    else:
+                        print(f"Unexpected data type for message. RAW: {str(latest_message)[:200]}")
             else:
                 print(f"API Request Failed ({response.status_code}): {response.text}")
 
         except Exception as e:
             print(f"CRITICAL ERROR in loop: {str(e)}")
-            print(traceback.format_exc()) # This prints the exact line of the error!
+            print(traceback.format_exc())
             
         await asyncio.sleep(10)
 
