@@ -2,9 +2,9 @@ from fastapi import FastAPI
 import requests
 import os
 import asyncio
+import traceback
 from contextlib import asynccontextmanager
 
-# .strip('"').strip("'").strip() automatically removes any accidental quotes or spaces!
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip('"').strip("'").strip()
 TELEGRAM_CHANNEL_ID = os.getenv("TELEGRAM_CHANNEL_ID", "").strip('"').strip("'").strip()
 WHATSAPP_CHANNEL_JID = os.getenv("WHATSAPP_CHANNEL_JID", "").strip('"').strip("'").strip()
@@ -18,9 +18,6 @@ async def poll_whatsapp_channel():
     global last_processed_message_id
     print("\n--- POLLING ENGINE STARTING ---")
     print(f"Target JID: {WHATSAPP_CHANNEL_JID}")
-    print(f"Evolution URL: {EVO_API_URL}")
-    # Print the first 4 characters of the key to verify it loaded without quotes
-    print(f"API Key Starts With: {EVO_API_KEY[:4]}...") 
     print("-------------------------------\n")
     
     await asyncio.sleep(2)
@@ -28,33 +25,43 @@ async def poll_whatsapp_channel():
     while True:
         try:
             url = f"{EVO_API_URL}/chat/findMessages/{INSTANCE_NAME}"
-            
-            # Sending the key in BOTH formats to guarantee V2 compatibility
             headers = {
                 "apikey": EVO_API_KEY, 
                 "Authorization": f"Bearer {EVO_API_KEY}",
                 "Content-Type": "application/json"
             }
-            
             payload = {
                 "where": {"remoteJid": WHATSAPP_CHANNEL_JID},
                 "count": 5
             }
             
-            print("Fetching messages from database...")
             response = requests.post(url, json=payload, headers=headers)
             
             if response.status_code == 200:
                 data = response.json()
-                messages = data.get("messages", [])
                 
+                # --- NEW SAFEPARSE LOGIC ---
+                messages = []
+                
+                # 1. If Evolution returned a direct list
+                if isinstance(data, list):
+                    messages = data
+                # 2. If Evolution returned a dictionary
+                elif isinstance(data, dict):
+                    messages = data.get("messages") or data.get("data") or data.get("records") or []
+                    # If the messages themselves are inside a dict instead of a list
+                    if isinstance(messages, dict):
+                        messages = list(messages.values())
+
                 if not messages:
-                    print(f"Result: SUCCESS, but Database returned 0 messages for {WHATSAPP_CHANNEL_JID}.")
+                    # Print the first 300 characters of the raw response so we can see it
+                    print(f"No messages parsed. RAW DB Response: {str(data)[:300]}")
                 else:
+                    # Safely grab the most recent message
                     latest_message = messages[-1]
                     message_id = latest_message.get("key", {}).get("id")
                     
-                    if message_id != last_processed_message_id:
+                    if message_id and message_id != last_processed_message_id:
                         print(f"New Message ID detected: {message_id}")
                         
                         msg_content = latest_message.get("message", {})
@@ -70,14 +77,13 @@ async def poll_whatsapp_channel():
                             send_to_telegram(text)
                             last_processed_message_id = message_id
                         else:
-                            print("Message received, but no text could be extracted.")
-                    else:
-                        print("No new messages.")
+                            print(f"Received message, but no text found. RAW: {str(latest_message)[:200]}")
             else:
                 print(f"API Request Failed ({response.status_code}): {response.text}")
 
         except Exception as e:
             print(f"CRITICAL ERROR in loop: {str(e)}")
+            print(traceback.format_exc()) # This prints the exact line of the error!
             
         await asyncio.sleep(10)
 
